@@ -102,6 +102,7 @@ pnpm --filter frontend run preview
 | `BACKEND_URL` | yes (production) | Full origin of the backend, e.g. `https://backend-573178651363.europe-west1.run.app`. Used by nginx to proxy `/api/*`. |
 | `BASIC_AUTH_USER` | yes (production) | Basic-auth username served by nginx. |
 | `BASIC_AUTH_PASS` | yes (production) | Basic-auth password served by nginx. |
+| `INTERNAL_TOKEN` | yes (production) | Shared secret forwarded to the backend as `X-Internal-Token`. Must match the value set on the backend service. |
 
 These are consumed by `frontend/entrypoint.sh` at container startup — they are never baked into the image.
 
@@ -159,13 +160,16 @@ Browser → frontend Cloud Run (nginx, port 8080)
               └── /api/*     → proxy_pass to backend Cloud Run (HTTPS + SNI)
 ```
 
-nginx reads two env vars injected by Cloud Run at startup:
+nginx reads env vars injected by Cloud Run at startup:
 
 | Env var | Purpose |
 |---|---|
 | `BACKEND_URL` | Full backend origin, e.g. `https://backend-573178651363.europe-west1.run.app` |
 | `BASIC_AUTH_USER` | Basic-auth username — **do not commit** |
 | `BASIC_AUTH_PASS` | Basic-auth password — **do not commit** |
+| `INTERNAL_TOKEN` | Shared secret added to every proxied request as `X-Internal-Token` — **do not commit** |
+
+The backend validates `X-Internal-Token` on every endpoint except `GET /api/health`. Requests hitting the backend URL directly without the correct token get a `401`. The token is identical on both services and is never stored in the repo.
 
 ---
 
@@ -206,7 +210,7 @@ gcloud run deploy backend \
   --platform managed \
   --allow-unauthenticated \
   --port 8080 \
-  --set-env-vars "GOOGLE_GENERATIVE_AI_API_KEY=<your-gemini-key>,FRONTEND_ORIGIN=https://frontend-573178651363.europe-west1.run.app" \
+  --set-env-vars "GOOGLE_GENERATIVE_AI_API_KEY=<your-gemini-key>,FRONTEND_ORIGIN=https://frontend-573178651363.europe-west1.run.app,INTERNAL_TOKEN=<same-random-token>" \
   --project "$GCP_PROJECT"
 ```
 
@@ -228,7 +232,7 @@ gcloud run deploy frontend \
   --platform managed \
   --allow-unauthenticated \
   --port 8080 \
-  --set-env-vars "BACKEND_URL=https://backend-573178651363.europe-west1.run.app,BASIC_AUTH_USER=<username>,BASIC_AUTH_PASS=<password>" \
+  --set-env-vars "BACKEND_URL=https://backend-573178651363.europe-west1.run.app,BASIC_AUTH_USER=<username>,BASIC_AUTH_PASS=<password>,INTERNAL_TOKEN=<same-random-token>" \
   --project "$GCP_PROJECT"
 ```
 
