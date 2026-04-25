@@ -1,3 +1,22 @@
 .DS_Store
 .playwright-mcp/
 viewer-*.png
+
+# Node
+node_modules/
+dist/
+build/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/
+.idea/
