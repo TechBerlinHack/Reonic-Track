@@ -1,14 +1,7 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-
-type Role = 'installer' | 'homeowner';
 
 export function Home() {
-  const [role, setRole] = useState<Role>('installer');
   const navigate = useNavigate();
 
   return (
@@ -18,20 +11,19 @@ export function Home() {
           <CardTitle>Renewable Design Studio</CardTitle>
           <CardDescription>Pick the role you want to continue as.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <RadioGroup value={role} onValueChange={(v) => setRole(v as Role)}>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="installer" id="role-installer" />
-              <Label htmlFor="role-installer">Installer</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="homeowner" id="role-homeowner" />
-              <Label htmlFor="role-homeowner">Home owner</Label>
-            </div>
-          </RadioGroup>
-          <Button className="w-full" onClick={() => navigate(`/${role}`)}>
-            Continue
-          </Button>
+        <CardContent className="space-y-4">
+          <button
+            onClick={() => navigate('/installer')}
+            className="w-full rounded-lg bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 px-6 py-4 text-lg font-semibold text-white shadow-md transition-all hover:shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-offset-2"
+          >
+            Installer
+          </button>
+          <button
+            onClick={() => navigate('/homeowner')}
+            className="w-full rounded-lg bg-gradient-to-r from-emerald-400 via-teal-500 to-cyan-500 px-6 py-4 text-lg font-semibold text-white shadow-md transition-all hover:shadow-lg hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2"
+          >
+            Home owner
+          </button>
         </CardContent>
       </Card>
     </main>
