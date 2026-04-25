@@ -164,6 +164,14 @@ export function Homeowner() {
             updating={updating}
             placeholder="Tell me your annual electricity use and house size to see your first offer."
           />
+          {recommendation && (
+            <Button
+              size="lg"
+              className="w-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-indigo-500 text-white shadow-lg shadow-fuchsia-500/30 transition-transform hover:scale-[1.02] hover:from-pink-400 hover:via-fuchsia-400 hover:to-indigo-400 hover:text-white"
+            >
+              Get quote
+            </Button>
+          )}
         </div>
       </div>
 
