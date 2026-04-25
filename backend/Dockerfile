@@ -17,7 +17,7 @@ COPY backend ./backend
 RUN pnpm --filter backend run build
 
 # Produce a self-contained deployable directory with prod-only node_modules
-RUN pnpm --filter backend --prod deploy /deploy
+RUN pnpm --filter backend --prod deploy --legacy /deploy
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
