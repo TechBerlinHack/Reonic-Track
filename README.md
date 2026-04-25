@@ -39,6 +39,8 @@ Then open **http://localhost:8766/viewer.html**.
 - Supports installer refinement through controls and simple natural language instructions
 - Produces a customer-facing offer summary
 
+See [DATA_MODELS.md](DATA_MODELS.md) for the raw CSV schemas, normalized app models, roof-analysis model, sizing output, and offer model.
+
 ## Google Solar API Mode
 
 The app also includes an optional Google Solar source. Add a Google API key and either an address or latitude/longitude to fetch `buildingInsights` from the Solar API. This replaces the local GLB roof-capacity estimate with live roof-segment and panel-capacity data when available.
