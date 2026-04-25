@@ -14,8 +14,11 @@ COPY frontend ./frontend
 RUN pnpm --filter frontend run build
 
 FROM nginx:alpine AS runtime
+RUN apk add --no-cache apache2-utils gettext
 COPY --from=builder /app/frontend/dist /usr/share/nginx/html
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY frontend/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/entrypoint.sh"]
