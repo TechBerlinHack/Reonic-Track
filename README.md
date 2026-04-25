@@ -123,7 +123,8 @@ These are consumed by `frontend/entrypoint.sh` at container startup — they are
 │   │   ├── pages/{Home,Installer,Homeowner}.tsx
 │   │   └── components/ui/      # shadcn/ui components
 │   ├── Dockerfile              # multi-stage, nginx:alpine runtime
-│   └── nginx.conf              # SPA fallback to index.html
+│   ├── nginx.conf              # basic auth + /api proxy + SPA fallback (template, envsubst at startup)
+│   └── entrypoint.sh           # generates .htpasswd, runs envsubst on nginx.conf, starts nginx
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 ├── viewer.html              # legacy static prototype (untouched)
