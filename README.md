@@ -95,9 +95,15 @@ pnpm --filter frontend run preview
 | `PORT` | no | Defaults to `8080` (Cloud Run injects this automatically) |
 | `FRONTEND_ORIGIN` | no | CORS origin, defaults to `http://localhost:5173` |
 
-### frontend
+### frontend (runtime, injected into the Docker container — never committed)
 
-No required env vars. In production behind a single domain, the frontend hits `/api/*` on its own origin (configure your load balancer / reverse proxy or frontend nginx accordingly).
+| Variable | Required | Notes |
+|---|---|---|
+| `BACKEND_URL` | yes (production) | Full origin of the backend, e.g. `https://backend-573178651363.europe-west1.run.app`. Used by nginx to proxy `/api/*`. |
+| `BASIC_AUTH_USER` | yes (production) | Basic-auth username served by nginx. |
+| `BASIC_AUTH_PASS` | yes (production) | Basic-auth password served by nginx. |
+
+These are consumed by `frontend/entrypoint.sh` at container startup — they are never baked into the image.
 
 ---
 
@@ -127,105 +133,137 @@ No required env vars. In production behind a single domain, the frontend hits `/
 
 ---
 
+## Live deployment
+
+| Service | URL |
+|---|---|
+| Frontend | `https://frontend-573178651363.europe-west1.run.app` |
+| Backend | `https://backend-573178651363.europe-west1.run.app` |
+
+- **GCP project:** `bigberlin-hack26ber-3135`
+- **Region:** `europe-west1`
+- **Artifact Registry:** `europe-west1-docker.pkg.dev/bigberlin-hack26ber-3135/hackathon/`
+
+The frontend is protected by HTTP basic auth. Credentials are **not stored in this repo** — they are injected as Cloud Run environment variables at deploy time (see [Deploy the frontend](#deploy-the-frontend) below).
+
+---
+
+## How the production wiring works
+
+In production the Vite dev proxy is gone. Instead, the frontend nginx container proxies `/api/*` directly to the backend Cloud Run URL at runtime. The architecture is:
+
+```
+Browser → frontend Cloud Run (nginx, port 8080)
+              ├── /*         → serves static React SPA
+              └── /api/*     → proxy_pass to backend Cloud Run (HTTPS + SNI)
+```
+
+nginx reads two env vars injected by Cloud Run at startup:
+
+| Env var | Purpose |
+|---|---|
+| `BACKEND_URL` | Full backend origin, e.g. `https://backend-573178651363.europe-west1.run.app` |
+| `BASIC_AUTH_USER` | Basic-auth username — **do not commit** |
+| `BASIC_AUTH_PASS` | Basic-auth password — **do not commit** |
+
+---
+
 ## Deploy to Google Cloud Run
 
-Both services target Cloud Run. Each Dockerfile is built **from the repo root** so it can see the pnpm workspace files.
+All images must be built for `linux/amd64` (Cloud Run), even on Apple Silicon:
+
+```bash
+export DOCKER_BUILD_FLAGS="--platform=linux/amd64"
+```
 
 ### One-time GCP setup
 
 ```bash
-# pick your project + region
-export GCP_PROJECT=your-project-id
+export GCP_PROJECT=bigberlin-hack26ber-3135
 export GCP_REGION=europe-west1
-export AR_REPO=renewable-design
+export AR_HOST="$GCP_REGION-docker.pkg.dev"
+export AR_REPO="$AR_HOST/$GCP_PROJECT/hackathon"
 
 gcloud config set project "$GCP_PROJECT"
 gcloud auth login
-gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev"
+gcloud auth configure-docker "$AR_HOST"
 
-# enable APIs
-gcloud services enable \
-  run.googleapis.com \
-  artifactregistry.googleapis.com \
-  cloudbuild.googleapis.com
-
-# create an Artifact Registry repo to host images
-gcloud artifacts repositories create "$AR_REPO" \
-  --repository-format=docker \
-  --location="$GCP_REGION" \
-  --description="Renewable Design Studio images"
-```
-
-Store the Gemini key in Secret Manager (recommended) so the backend doesn't need it baked into the image:
-
-```bash
-gcloud services enable secretmanager.googleapis.com
-printf '%s' 'YOUR_GEMINI_KEY' | gcloud secrets create google-generative-ai-api-key --data-file=-
-
-# allow the default Cloud Run service account to read it
-PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format='value(projectNumber)')
-gcloud secrets add-iam-policy-binding google-generative-ai-api-key \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role=roles/secretmanager.secretAccessor
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com
 ```
 
 ### Deploy the backend
 
-From the repo root:
-
 ```bash
-# build + push
-gcloud builds submit \
-  --tag "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$AR_REPO/backend:latest" \
-  --file backend/Dockerfile \
-  .
+# Build and push
+docker build $DOCKER_BUILD_FLAGS -f backend/Dockerfile -t "$AR_REPO/backend:latest" .
+docker push "$AR_REPO/backend:latest"
 
-# deploy
+# Deploy
 gcloud run deploy backend \
-  --image "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$AR_REPO/backend:latest" \
+  --image "$AR_REPO/backend:latest" \
   --region "$GCP_REGION" \
   --platform managed \
   --allow-unauthenticated \
   --port 8080 \
-  --set-secrets GOOGLE_GENERATIVE_AI_API_KEY=google-generative-ai-api-key:latest \
-  --set-env-vars FRONTEND_ORIGIN=https://YOUR-FRONTEND-URL.run.app
+  --set-env-vars "GOOGLE_GENERATIVE_AI_API_KEY=<your-gemini-key>,FRONTEND_ORIGIN=https://frontend-573178651363.europe-west1.run.app" \
+  --project "$GCP_PROJECT"
 ```
 
-Capture the resulting URL for the frontend's CORS origin and (optionally) for a reverse proxy.
+The backend URL is printed at the end (`Service URL: ...`). Note it — you need it for the frontend deploy.
 
 ### Deploy the frontend
 
-```bash
-gcloud builds submit \
-  --tag "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$AR_REPO/frontend:latest" \
-  --file frontend/Dockerfile \
-  .
+The frontend container reads `BASIC_AUTH_USER`, `BASIC_AUTH_PASS`, and `BACKEND_URL` at startup — **never put real credentials in the `--set-env-vars` flag in shell history or CI logs**. Use Secret Manager or set them interactively:
 
+```bash
+# Build and push
+docker build $DOCKER_BUILD_FLAGS -f frontend/Dockerfile -t "$AR_REPO/frontend:latest" .
+docker push "$AR_REPO/frontend:latest"
+
+# Deploy — substitute real values, do not commit them
 gcloud run deploy frontend \
-  --image "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT/$AR_REPO/frontend:latest" \
+  --image "$AR_REPO/frontend:latest" \
   --region "$GCP_REGION" \
   --platform managed \
   --allow-unauthenticated \
-  --port 8080
+  --port 8080 \
+  --set-env-vars "BACKEND_URL=https://backend-573178651363.europe-west1.run.app,BASIC_AUTH_USER=<username>,BASIC_AUTH_PASS=<password>" \
+  --project "$GCP_PROJECT"
 ```
 
-After the first backend deploy, redeploy the backend with the real frontend URL set on `FRONTEND_ORIGIN`.
+> **Keeping credentials out of history:** prefix the command with a space (zsh/bash `HISTCONTROL=ignorespace`) or use `--env-vars-file` pointing to a local file excluded by `.gitignore`.
 
-### Wire frontend → backend in production
+### Updating a service
 
-The dev-time Vite proxy doesn't exist in production. Pick one:
+Rebuild and push the image, then re-run the same `gcloud run deploy` command — Cloud Run will roll out the new revision with zero downtime.
 
-1. **Single domain (recommended)** — put both Cloud Run services behind a Google Cloud Load Balancer with path-based routing: `/api/*` → backend, everything else → frontend. The frontend keeps calling `/api/*` unchanged.
-2. **Two domains** — extend the frontend to read a build-time `VITE_API_BASE_URL` and prepend it to fetch / `useChat` calls. Pass it via `--build-arg` in the frontend Dockerfile.
+```bash
+# Example: update the backend after code change
+docker build $DOCKER_BUILD_FLAGS -f backend/Dockerfile -t "$AR_REPO/backend:latest" .
+docker push "$AR_REPO/backend:latest"
+gcloud run deploy backend \
+  --image "$AR_REPO/backend:latest" \
+  --region "$GCP_REGION" \
+  --project "$GCP_PROJECT"
+```
+
+Cloud Run reuses the env vars from the existing service revision — you only need to pass `--set-env-vars` again if you're changing them.
 
 ### Local Docker smoke test
 
 ```bash
+# Backend
 docker build -f backend/Dockerfile -t backend:local .
-docker run --rm -p 8080:8080 -e GOOGLE_GENERATIVE_AI_API_KEY=$YOUR_KEY backend:local
+docker run --rm -p 8080:8080 -e GOOGLE_GENERATIVE_AI_API_KEY=<your-key> backend:local
 
+# Frontend (requires a running backend)
 docker build -f frontend/Dockerfile -t frontend:local .
-docker run --rm -p 8081:8080 frontend:local
+docker run --rm -p 8081:8080 \
+  -e BACKEND_URL=http://host.docker.internal:8080 \
+  -e BASIC_AUTH_USER=hackathon \
+  -e BASIC_AUTH_PASS=berlin \
+  frontend:local
+# Open http://localhost:8081
 ```
 
 ---
