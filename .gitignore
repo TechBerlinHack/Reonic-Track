@@ -7,10 +7,11 @@ node_modules/
 dist/
 build/
 
-# Env
+# Env — never commit real credentials
 .env
 .env.local
 .env.*.local
+deploy-env.yaml   # local --env-vars-file for gcloud run deploy
 
 # Logs
 *.log
